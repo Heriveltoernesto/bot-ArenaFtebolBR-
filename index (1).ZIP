@@ -1,0 +1,193 @@
+const { Client, GatewayIntentBits } = require('discord.js');
+const axios = require('axios');
+require('dotenv').config();
+
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildMembers
+  ] 
+});
+
+const API_KEY = '49e8e7f98754a969ec922a842d7ad086';
+
+client.once('ready', () => {
+  console.log(`✅ ArenaFutebolBR está online!`);
+});
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  const content = message.content.toLowerCase();
+
+  if (content.startsWith('!jogos hoje')) {
+    await buscarJogosHoje(message);
+  } else if (content.startsWith('!br')) {
+    const serie = content.split(' ')[1]?.toLowerCase();
+    await buscarBrasileirao(message, serie);
+  } else if (content.startsWith('!internacional')) {
+    await buscarInternacionais(message);
+  } else if (content.startsWith('!basquete')) {
+    await buscarBasquete(message);
+  } else if (content.startsWith('!volei')) {
+    await buscarVolei(message);
+  } else if (content.startsWith('!beisebol')) {
+    await buscarBeisebol(message);
+  } else if (content.startsWith('!f1')) {
+    await buscarF1(message);
+  } else if (content.startsWith('!formula truck')) {
+    await buscarFormulaTruck(message);
+  } else if (content.startsWith('!todos')) {
+    await buscarTodosJogos(message);
+  }
+});
+
+async function buscarTodosJogos(message) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
+      headers: { 'x-apisports-key': API_KEY },
+      params: { date: today, season: 2024 }
+    });
+
+    const jogos = response.data.response;
+    if (jogos.length === 0) return message.reply('⚽ Nenhum jogo encontrado hoje.');
+
+    let msg = '📅 **Todos os Jogos de Hoje:**\n\n';
+    
+    // Agrupar jogos por liga
+    const jogosPorLiga = {};
+    jogos.forEach(jogo => {
+      const ligaNome = jogo.league.name;
+      if (!jogosPorLiga[ligaNome]) {
+        jogosPorLiga[ligaNome] = [];
+      }
+      jogosPorLiga[ligaNome].push(jogo);
+    });
+
+    // Criar mensagem organizada por liga
+    for (const [liga, jogosLiga] of Object.entries(jogosPorLiga)) {
+      msg += `\n🏆 **${liga}**\n`;
+      jogosLiga.forEach(jogo => {
+        const status = jogo.fixture.status.short === 'NS' ? '⏰ Em breve' : 
+                      jogo.fixture.status.elapsed ? `⚽ ${jogo.fixture.status.elapsed}'` : 
+                      '🔄 ' + jogo.fixture.status.short;
+                      
+        msg += `📍 ${jogo.teams.home.name} ${jogo.goals.home ?? 0} x ${jogo.goals.away ?? 0} ${jogo.teams.away.name} (${status})\n`;
+      });
+    }
+
+    // Dividir mensagem se for muito grande
+    if (msg.length > 2000) {
+      const chunks = msg.match(/.{1,1900}/g);
+      for (const chunk of chunks) {
+        await message.reply(chunk);
+      }
+    } else {
+      await message.reply(msg);
+    }
+
+  } catch (error) {
+    console.error(error);
+    message.reply('⚠️ Erro ao buscar os jogos.');
+  }
+}
+
+async function buscarJogosHoje(message) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
+      headers: { 'x-apisports-key': API_KEY },
+      params: { date: today, season: 2024 }
+    });
+
+    const jogos = response.data.response;
+    if (jogos.length === 0) return message.reply('⚽ Nenhum jogo encontrado hoje.');
+
+    let msg = '🏆 **Jogos de Hoje:**\n\n';
+    jogos.forEach(jogo => {
+      msg += `📍 ${jogo.teams.home.name} ${jogo.goals.home ?? 0} x ${jogo.goals.away ?? 0} ${jogo.teams.away.name} (${jogo.fixture.status.elapsed || 'N/A'} min)\n`;
+    });
+
+    message.reply(msg);
+  } catch (error) {
+    console.error(error);
+    message.reply('⚠️ Erro ao buscar os jogos.');
+  }
+}
+
+async function buscarBrasileirao(message, serie) {
+  const seriesMap = { a: 71, b: 72, c: 73, d: 74 };
+  const leagueId = seriesMap[serie];
+
+  if (!leagueId) return message.reply('❌ Série inválida. Use: `!br a`, `!br b`, `!br c` ou `!br d`');
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
+      headers: { 'x-apisports-key': API_KEY },
+      params: { league: leagueId, season: 2024, date: today }
+    });
+
+    const jogos = response.data.response;
+    if (jogos.length === 0) return message.reply(`🏆 Série ${serie.toUpperCase()} - Nenhum jogo hoje.`);
+
+    let msg = `🏆 Brasileirão Série ${serie.toUpperCase()} - Jogos de hoje:\n\n`;
+    jogos.forEach(jogo => {
+      msg += `📍 ${jogo.teams.home.name} ${jogo.goals.home ?? 0} x ${jogo.goals.away ?? 0} ${jogo.teams.away.name} (${jogo.fixture.status.elapsed || 'N/A'} min)\n`;
+    });
+
+    message.reply(msg);
+  } catch (error) {
+    console.error(error);
+    message.reply('⚠️ Erro ao buscar os jogos.');
+  }
+}
+
+async function buscarInternacionais(message) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
+      headers: { 'x-apisports-key': API_KEY },
+      params: { date: today, season: 2024 }
+    });
+
+    const jogos = response.data.response.filter(jogo => jogo.league.type === 'Cup' || jogo.league.type === 'League');
+    if (jogos.length === 0) return message.reply('🌍 Nenhum jogo internacional encontrado.');
+
+    let msg = '🌍 **Campeonatos Internacionais - Jogos de Hoje:**\n\n';
+    jogos.forEach(jogo => {
+      msg += `📍 ${jogo.teams.home.name} ${jogo.goals.home ?? 0} x ${jogo.goals.away ?? 0} ${jogo.teams.away.name} (${jogo.fixture.status.elapsed || 'N/A'} min)\n`;
+    });
+
+    message.reply(msg);
+  } catch (error) {
+    console.error(error);
+    message.reply('⚠️ Erro ao buscar os jogos internacionais.');
+  }
+}
+
+async function buscarBasquete(message) {
+  message.reply('🏀 Ainda não implementado.');
+}
+
+async function buscarVolei(message) {
+  message.reply('🏐 Ainda não implementado.');
+}
+
+async function buscarBeisebol(message) {
+  message.reply('⚾ Ainda não implementado.');
+}
+
+async function buscarF1(message) {
+  message.reply('🏎️ Ainda não implementado.');
+}
+
+async function buscarFormulaTruck(message) {
+  message.reply('🚛 Ainda não implementado.');
+}
+
+client.login(process.env.DISCORD_TOKEN);
